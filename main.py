@@ -49,7 +49,6 @@ def draw_boxes_on_binary_image(binary_img, original_image, box_w=10, box_h=10, t
     output = np.copy(original_image) 
     # Ensure the binary image is 8-bit single channel
     assert len(binary_img.shape) == 2, "Input must be a single-channel binary image"
-    cv2.imshow('binary image', binary_img)
     # Find contours and hierarchy
     contours, hierarchy = cv2.findContours(binary_img, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
     
@@ -131,7 +130,7 @@ def main():
     contourmap = contourmap.astype(np.uint8)
 
     individual_boxed_images, final_boxed_image  = draw_boxes_on_binary_image(contourmap, color_image, box_w=10, box_h=10, threshold_perc=25)
-    cv2.imshow('Contour Map', final_boxed_image)
+    
     
     
     
@@ -146,34 +145,6 @@ def main():
     midpoints[midcluster_image < 0.5 * np.max(midcluster_image)] = 0
     midpoints[midcluster_image >= 0.5 * np.max(midcluster_image)] = 255
     midpoints = midpoints.astype(np.uint8)
-    
-
-    #morphological erosion to remove noise
-    kernel = np.ones((3, 3), np.uint8)
-    #############################################
-    #midpoints = midcluster.erode_until_area(midpoints, kernel, min_area=3000)
-    
-    
-
-    #find connected components in the midpoints image
-    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(midpoints)
-
-    print(f"Number of connected components: {num_labels - 1}")  # Subtract 1 for the background
-
-    copy = np.copy(color_image)
-    
-    # Draw bounding boxes around the connected components
-    for i in range(1, num_labels):  # Start from 1 to skip the background
-        x, y, w, h = stats[i, :4]
-        cv2.rectangle(copy, (x, y), (x + w, y + h), (0, 255, 0), 2)
-        cv2.putText(copy, f'ID: {i}', (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-    
-    # Draw centroids on the color image
-    for i in range(1, num_labels):
-        cx, cy = int(centroids[i][0]), int(centroids[i][1])
-        cv2.circle(copy, (cx, cy), 5, (255, 0, 0), -1)
-        cv2.putText(copy, f'Centroid {i}', (cx + 5, cy - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
-    
     
 
     #applying colormaps to all values to visualize
@@ -202,7 +173,7 @@ def main():
     cv2.imshow('Thresholded Depth', thresh_colored)
     cv2.imshow('Midcluster', midcluster_colored)
     cv2.imshow('Midpoints', midpoints)
-    cv2.imshow('Connected Components', copy)
+    cv2.imshow('Boxed Map', final_boxed_image)
     
     #wait for a key press
     while True:
