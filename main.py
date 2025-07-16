@@ -132,20 +132,6 @@ def main():
     individual_boxed_images, final_boxed_image  = draw_boxes_on_binary_image(contourmap, color_image, box_w=10, box_h=10, threshold_perc=25)
     
     
-    
-    
-    
-
-    #get the midpoints of the clusters as bright spots.
-    midcluster_image = midcluster.distance_transform(thresh)
-    
-
-    #threshold the midcluster image to remove values below a certain threshold
-    midpoints = np.copy(midcluster_image)
-    midpoints[midcluster_image < 0.5 * np.max(midcluster_image)] = 0
-    midpoints[midcluster_image >= 0.5 * np.max(midcluster_image)] = 255
-    midpoints = midpoints.astype(np.uint8)
-    
 
     #applying colormaps to all values to visualize
     #Original Depth Image
@@ -157,10 +143,7 @@ def main():
     #Thresholded Depth Image
     thresh_colored = cv2.normalize(thresh, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
     thresh_colored = cv2.applyColorMap(thresh_colored, cv2.COLORMAP_JET)
-    #Midcluster Image
-    midcluster_colored = cv2.normalize(midcluster_image, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
-    midcluster_colored = cv2.applyColorMap(midcluster_colored, cv2.COLORMAP_JET)
-
+    
 
 
     
@@ -171,8 +154,6 @@ def main():
     cv2.imshow('Depth Image', extracted_depth_colored)
     cv2.imshow('Denoised Depth', depth_denoised_colored)
     cv2.imshow('Thresholded Depth', thresh_colored)
-    cv2.imshow('Midcluster', midcluster_colored)
-    cv2.imshow('Midpoints', midpoints)
     cv2.imshow('Boxed Map', final_boxed_image)
     
     #wait for a key press
