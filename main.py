@@ -60,6 +60,7 @@ def draw_boxes_on_binary_image(binary_img, original_image, box_w=10, box_h=10, t
     
     output_images = []
     final_output = original_image.copy()
+    midpoint_coords =  []
     
     for i in range(len(contours)):
         if hierarchy[0][i][3] != -1:
@@ -87,8 +88,12 @@ def draw_boxes_on_binary_image(binary_img, original_image, box_w=10, box_h=10, t
                     if count > pixel_threshold:
                         cv2.rectangle(output, (j, k), (j + box_w, k + box_h), (255, 0, 0), 1, lineType=8)
                         cv2.rectangle(final_output, (j, k), (j + box_w, k + box_h), (255, 0, 0), 1, lineType=8)
+                        x_mid = (j + box_w/2)
+                        y_mid = (k + box_h/2)
+                        final_output = cv2.circle(final_output, (int(x_mid), int(y_mid)),1, (0,0,255), 1)
+                        midpoint_coords.append((x_mid, y_mid))
         output_images.append(output)
-    return output_images, final_output
+    return output_images, final_output, midpoint_coords
     
 def main():
     #rect, color_image, depth_image = getdata.main()
@@ -97,8 +102,8 @@ def main():
     
     
     # Load the color image and depth image from files
-    color_image = cv2.imread('color_image.jpg')
-    depth_image = np.load('depth_image.npy')
+    color_image = cv2.imread('color_image4.jpg')
+    depth_image = np.load('depth_image4.npy')
     rect = (258, 207, 140, 264)
 
     # Apply GrabCut algorithm
@@ -129,7 +134,8 @@ def main():
     contourmap[contourmap <= 0] = 0
     contourmap = contourmap.astype(np.uint8)
 
-    individual_boxed_images, final_boxed_image  = draw_boxes_on_binary_image(contourmap, color_image, box_w=10, box_h=10, threshold_perc=25)
+    individual_boxed_images, final_boxed_image, midpoint_coords  = draw_boxes_on_binary_image(contourmap, color_image, box_w=10, box_h=10, threshold_perc=30)
+    print(midpoint_coords)
     
     
 
