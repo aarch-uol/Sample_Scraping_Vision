@@ -6,6 +6,7 @@ import depth_extract
 import denoise
 import getdata
 import midcluster
+import YOLO_boundingbox
 
 
 
@@ -104,7 +105,11 @@ def main():
     # Load the color image and depth image from files
     color_image = cv2.imread('color_image4.jpg')
     depth_image = np.load('depth_image4.npy')
-    rect = (258, 207, 140, 264)
+    rect = cv2.selectROI(color_image)
+    #rect = (287, 212, 397, 456)
+    #rect = YOLO_boundingbox.find_bounding_box(color_image)
+    print('rectange:', rect)
+    color_image = cv2.rectangle(color_image, (rect[0], rect[1]), (rect[2], rect[3]), (0, 255, 0), 5 )
 
     # Apply GrabCut algorithm
     mask = grabcut.apply_grabcut(color_image, rect, iter_count=5)
