@@ -97,19 +97,25 @@ def draw_boxes_on_binary_image(binary_img, original_image, box_w=10, box_h=10, t
     return output_images, final_output, midpoint_coords
     
 def main():
+
+    path = 'image4'
     #rect, color_image, depth_image = getdata.main()
-    #cv2.imwrite('color_image4.jpg', color_image)
-    #np.save('depth_image4.npy', depth_image)
-    
+    #cv2.imwrite(path + '.jpg', color_image)
+    #np.save(path + '.npy', depth_image)
     
     # Load the color image and depth image from files
-    color_image = cv2.imread('color_image4.jpg')
-    depth_image = np.load('depth_image4.npy')
-    rect = cv2.selectROI(color_image)
+    color_image = cv2.imread(path + '.jpg')
+    depth_image = np.load(path + '.npy')
+    #rect = cv2.selectROI(color_image)
     #rect = (287, 212, 397, 456)
-    #rect = YOLO_boundingbox.find_bounding_box(color_image)
+    rect = YOLO_boundingbox.find_bounding_box(color_image)
+    bounding_image = color_image.copy()
+    cv2.rectangle(bounding_image, (rect[0],rect[1]), (rect[2], rect[3]), (255,0,0), 3)
     print('rectange:', rect)
-    color_image = cv2.rectangle(color_image, (rect[0], rect[1]), (rect[2], rect[3]), (0, 255, 0), 5 )
+    rect = list(rect)
+    rect[2] = rect[2] - rect[0]
+    rect[3] = rect[3] - rect[1]
+    rect = tuple(rect)
 
     # Apply GrabCut algorithm
     mask = grabcut.apply_grabcut(color_image, rect, iter_count=5)
@@ -161,6 +167,7 @@ def main():
 
     # Display the images
     cv2.imshow('Color Image', color_image)
+    cv2.imshow('Bounding Box', bounding_image)
     cv2.imshow('Mask', mask)
     cv2.imshow('Depth Image', extracted_depth_colored)
     cv2.imshow('Denoised Depth', depth_denoised_colored)
