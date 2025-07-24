@@ -4,7 +4,7 @@ model = YOLO("best.pt")
 def find_bounding_box(image):
     results = model.predict(image)
     result = results[0]
-    len(result.boxes)
+    rect = None
     for box in result.boxes:
         class_id = result.names[box.cls[0].item()]
         cords = box.xyxy[0].tolist()
@@ -13,6 +13,10 @@ def find_bounding_box(image):
         if class_id == 'vial' or class_id == 'vial_with_crystal' or class_id == 'empty_vial':
             print("Probability:", conf)
             rect = (cords[0], cords[1], cords[2], cords[3])
+    if not rect:
+        print("No vial detected in the image.")
+        return None
+            
     return rect
 
 

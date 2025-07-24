@@ -1,6 +1,7 @@
 import pyrealsense2 as rs
 import cv2
 import numpy as np
+import os
 
 def main():
     pipeline = rs.pipeline()
@@ -43,3 +44,66 @@ def main():
         
         pipeline.stop()
         cv2.destroyAllWindows()
+
+def get_random_image():
+    import random
+    import os
+    dataset_path = 'Dataset2'
+    color_dir = os.path.join(dataset_path, 'color_images')
+    depth_dir = os.path.join(dataset_path, 'depth_images')
+    images = [f for f in os.listdir(color_dir) if f.endswith('.jpg')]
+    if not images:
+        raise ValueError("No images found in the color_images directory.")
+    while images:
+        random_image = random.choice(images)
+        color_image_path = os.path.join(color_dir, random_image)
+        depth_image_path = os.path.join(depth_dir, random_image[:-4] + '.npy')
+        color_image = cv2.imread(color_image_path)
+        if color_image is None:
+            images.remove(random_image)
+            continue
+        if not os.path.exists(depth_image_path):
+            images.remove(random_image)
+            continue
+        depth_image = np.load(depth_image_path)
+        print('image:', random_image)
+        return color_image, depth_image, random_image[:-4]
+    raise ValueError("No valid image and depth pairs found in the dataset directory.")
+
+def get_all_images():
+    """Generator that yields all valid image pairs sequentially"""
+    dataset_path = 'Dataset2'
+    color_dir = os.path.join(dataset_path, 'color_images')
+    depth_dir = os.path.join(dataset_path, 'depth_images')
+    
+    if not os.path.exists(color_dir) or not os.path.exists(depth_dir):
+        raise ValueError(f"Dataset directories not found: {color_dir} or {depth_dir}")
+    
+    images = sorted([f for f in os.listdir(color_dir) if f.endswith('.jpg')])
+    if not images:
+        raise ValueError("No images found in the color_images directory.")
+    
+    valid_count = 0
+    for image_name in images:
+        color_image_path = os.path.join(color_dir, image_name)
+        depth_image_path = os.path.join(depth_dir, image_name[:-4] + '.npy')
+        
+        # Check if both files exist and are valid
+        if not os.path.exists(depth_image_path):
+            print(f"Skipping {image_name}: No corresponding depth file")
+            continue
+            
+        color_image = cv2.imread(color_image_path)
+        if color_image is None:
+            print(f"Skipping {image_name}: Could not load color image")
+            continue
+            
+        try:
+            depth_image = np.load(depth_image_path)
+        except Exception as e:
+            print(f"Skipping {image_name}: Could not load depth image - {e}")
+            continue
+        
+        valid_count += 1
+        print(f"Processing image {valid_count}: {image_name}")
+        yield color_image, depth_image, image_name[:-4]
