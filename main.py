@@ -145,7 +145,7 @@ def main():
     contourmap[contourmap <= 0] = 0
     contourmap = contourmap.astype(np.uint8)
 
-    individual_boxed_images, final_boxed_image, midpoint_coords  = draw_boxes_on_binary_image(contourmap, color_image, box_w=10, box_h=10, threshold_perc=30)
+    individual_boxed_images, final_boxed_image, midpoint_coords  = draw_boxes_on_binary_image(contourmap, color_image, box_w=30, box_h=30, threshold_perc=10)
     print(midpoint_coords)
     
     
