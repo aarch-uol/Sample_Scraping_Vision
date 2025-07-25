@@ -8,6 +8,7 @@ import getdata
 import midcluster
 import YOLO_boundingbox
 import os
+from datetime import datetime
 
 
 
@@ -273,9 +274,9 @@ def save_combined_results(color_image, bounding_image, mask, extracted_depth_col
 def main():
     """Main pipeline orchestrator - allows choosing between single random image or all images"""
     
-    process_single_random_image()
+    #process_single_random_image()
     
-    #process_all_images()
+    process_all_images()
 
 def process_single_random_image():
     """Process a single random image with interactive display"""
@@ -326,6 +327,7 @@ def process_all_images():
     print("\n=== Processing All Images Sequentially ===")
     successful_count = 0
     failed_count = 0
+    failed_images = []  # List to store failed image names
     
     try:
         for color_image, depth_image, image_name in getdata.get_all_images():
@@ -335,19 +337,50 @@ def process_all_images():
                     successful_count += 1
                 else:
                     failed_count += 1
+                    failed_images.append(f"{image_name} - Vial detection failed")
             except Exception as e:
                 print(f"Error processing {image_name}: {e}")
                 failed_count += 1
+                failed_images.append(f"{image_name} - Error: {str(e)}")
                 continue
                 
     except Exception as e:
         print(f"Error in dataset processing: {e}")
         return
     
+    # Create failed images log file
+    create_failed_images_log(failed_images)
+    
     print(f"\n=== Processing Complete ===")
     print(f"Successfully processed: {successful_count} images")
     print(f"Failed to process: {failed_count} images")
     print(f"Total attempted: {successful_count + failed_count} images")
+    
+    if failed_images:
+        print(f"Failed images logged to: failed_images.txt")
+
+def create_failed_images_log(failed_images):
+    """Create a text file listing all failed images with reasons"""
+    if not failed_images:
+        return
+    
+    # Create results folder if it doesn't exist
+    results_folder = 'results'
+    if not os.path.exists(results_folder):
+        os.makedirs(results_folder)
+    
+    log_file_path = os.path.join(results_folder, 'failed_images.txt')
+    
+    with open(log_file_path, 'w') as f:
+        f.write("FAILED IMAGES LOG\n")
+        f.write("=" * 50 + "\n")
+        f.write(f"Total failed images: {len(failed_images)}\n")
+        f.write("=" * 50 + "\n\n")
+        
+        for i, failed_image in enumerate(failed_images, 1):
+            f.write(f"{i:3d}. {failed_image}\n")
+    
+    print(f"Failed images log created: {log_file_path}")
 
 def process_single_image(color_image, depth_image, image_name):
     """Process a single image through the pipeline (for batch processing)"""
