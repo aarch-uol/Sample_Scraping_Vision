@@ -434,35 +434,21 @@ def process_single_image(color_image, depth_image, image_name):
                          depth_denoised_colored, thresh_colored, final_boxed_image, image_name)
     
     print(f"Successfully processed {image_name}")
-    return True
+    return True, bounding_image, mask, extracted_depth_colored, depth_denoised_colored, thresh_colored, final_boxed_image
 
 
 def process_single_random_image():
     """Process a single random image with interactive display."""
-    print("\n=== Processing Single Random Image ===")
-    
     try:
         # Load random image
         color_image, depth_image, image_name = getdata.get_random_image()
-        print(f"Processing: {image_name}")
         
         # Process through pipeline
-        success = process_single_image(color_image, depth_image, image_name)
+        success, bounding_image, mask, extracted_depth_colored, depth_denoised_colored, thresh_colored, final_boxed_image = process_single_image(color_image, depth_image, image_name)
         if not success:
             print(f"Processing failed for {image_name}.")
             return
-        
-        # Load results for display
-        mask, bounding_image = detect_and_segment_vial(color_image)
-        extracted_depth, depth_denoised, thresh = process_depth_data(mask, depth_image)
-        contourmap = create_binary_map(thresh)
-        individual_boxed_images, final_boxed_image, midpoint_coords = analyze_crystals(contourmap, color_image)
-        extracted_depth_colored, depth_denoised_colored, thresh_colored = create_visualizations(
-            extracted_depth, depth_denoised, thresh
-        )
-        
-        # Display results interactively
-        print(f"Displaying results for {image_name}. Press 'q' to close windows.")
+        # Display results
         display_results(color_image, bounding_image, mask, extracted_depth_colored,
                        depth_denoised_colored, thresh_colored, final_boxed_image)
         
@@ -518,8 +504,8 @@ def main():
     # Toggle between single random image and all images
     # Uncomment the desired processing mode:
     
-    # process_single_random_image()  # For single image with interactive display
-    process_all_images()             # For batch processing all images
+    process_single_random_image()  # For single image with interactive display
+    #process_all_images()             # For batch processing all images
 
 
 if __name__ == "__main__":
