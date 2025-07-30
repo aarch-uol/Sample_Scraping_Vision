@@ -5,30 +5,49 @@ import os
 import random
 
 
-def main():
+def initialize_camera():
     """
-    Main function for live camera capture with ROI selection.
+    Initialize the RealSense camera for live streaming.
     
     Returns:
-        tuple: (rect, color_image, depth_image) or None if failed
+        tuple: (pipeline, profile) or (None, None) if initialization fails
     """
-    # Configure pipeline
-    pipeline = rs.pipeline()
-    config = rs.config()
-    config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
-    config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
-
-    # Start streaming
-    profile = pipeline.start(config)
-
-    # Configure depth sensor
-    depth_sensor = profile.get_device().first_depth_sensor()
     try:
-        depth_sensor.set_option(rs.option.visual_preset, rs.rs400_visual_preset.high_density)
-        print("Visual preset set to High Density")
+        # Configure pipeline
+        pipeline = rs.pipeline()
+        config = rs.config()
+        config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
+        config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+
+        # Start streaming
+        profile = pipeline.start(config)
+
+        # Configure depth sensor
+        depth_sensor = profile.get_device().first_depth_sensor()
+        try:
+            depth_sensor.set_option(rs.option.visual_preset, rs.rs400_visual_preset.high_density)
+            print("Visual preset set to High Density")
+        except Exception as e:
+            print(f"Failed to set visual preset: {e}")
+        
+        print("Camera initialized successfully")
+        return pipeline, profile
+        
     except Exception as e:
-        print(f"Failed to set visual preset: {e}")
+        print(f"Failed to initialize camera: {e}")
+        return None, None
+
+
+def get_live_frame(pipeline):
+    """
+    Get a single frame from the live camera stream.
     
+    Args:
+        pipeline: RealSense pipeline object
+        
+    Returns:
+        tuple: (color_image, depth_image) or (None, None) if failed
+    """
     try:
         # Wait for a coherent pair of frames: depth and color
         frames = pipeline.wait_for_frames()
@@ -36,25 +55,56 @@ def main():
         color_frame = frames.get_color_frame()
         
         if not depth_frame or not color_frame:
-            print("No frames received. Exiting...")
-            return
+            return None, None
 
         # Convert images to numpy arrays
         depth_image = np.asanyarray(depth_frame.get_data())
         color_image = np.asanyarray(color_frame.get_data())
-
-        # Interactive ROI selection
-        rect = cv2.selectROI("Select ROI", color_image, fromCenter=False, showCrosshair=True)
-        cv2.destroyWindow("Select ROI")  # Close the ROI window after selection
         
-        if rect[2] == 0 or rect[3] == 0:
-            print("No ROI selected. Exiting...")
-            return
+        return color_image, depth_image
+        
+    except Exception as e:
+        print(f"Failed to get frame: {e}")
+        return None, None
+
+
+def cleanup_camera(pipeline):
+    """
+    Clean up camera resources.
+    
+    Args:
+        pipeline: RealSense pipeline object
+    """
+    try:
+        pipeline.stop()
+        print("Camera cleaned up successfully")
+    except Exception as e:
+        print(f"Error during camera cleanup: {e}")
+
+
+def main():
+    """
+    Main function for live camera capture with ROI selection.
+    
+    Returns:
+        tuple: (color_image, depth_image) or None if failed
+    """
+    # Initialize camera
+    pipeline, profile = initialize_camera()
+    if pipeline is None:
+        return None
+    
+    try:
+        # Get a single frame
+        color_image, depth_image = get_live_frame(pipeline)
+        if color_image is None or depth_image is None:
+            print("No frames received. Exiting...")
+            return None
             
-        return rect, color_image, depth_image
+        return color_image, depth_image
         
     finally:
-        pipeline.stop()
+        cleanup_camera(pipeline)
         cv2.destroyAllWindows()
 
 

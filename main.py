@@ -141,7 +141,7 @@ def draw_boxes_on_binary_image(binary_img, original_image, box_w=10, box_h=10, t
         output_images.append(output)
     
     # Debug output
-    print(f"Found {len(contour_midpoints)} contours with midpoints: {contour_midpoints}")
+    #print(f"Found {len(contour_midpoints)} contours with midpoints: {contour_midpoints}")
     
     return output_images, final_output, midpoint_coords
 
@@ -159,7 +159,7 @@ def detect_and_segment_vial(color_image):
     # Get bounding box from YOLO
     rect = YOLO_boundingbox.find_bounding_box(color_image)
     if rect is None:
-        print("No bounding box found. Exiting...")
+        print("No bounding box found. Skipping frame...")
         return None, None
     
     # Draw bounding box for visualization
@@ -237,7 +237,7 @@ def analyze_crystals(contourmap, color_image):
     individual_boxed_images, final_boxed_image, midpoint_coords = draw_boxes_on_binary_image(
         contourmap, color_image, box_w=10, box_h=10, threshold_perc=10
     )
-    print(f"Crystal midpoint coordinates: {midpoint_coords}")
+    #print(f"Crystal midpoint coordinates: {midpoint_coords}")
     
     return individual_boxed_images, final_boxed_image, midpoint_coords
 
@@ -262,15 +262,15 @@ def create_visualizations(extracted_depth, depth_denoised, thresh):
     depth_denoised_colored = cv2.applyColorMap(depth_denoised_colored, cv2.COLORMAP_JET)
     
     thresh_colored = cv2.normalize(thresh, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
-    thresh_colored = cv2.applyColorMap(thresh_colored, cv2.COLORMAP_JET)
+    thresh_colored = cv2.applyColorMap(thresh_colored, cv2.COLORMAP_JET);
     
     return extracted_depth_colored, depth_denoised_colored, thresh_colored
 
 
-def display_results(color_image, bounding_image, mask, extracted_depth_colored, 
-                   depth_denoised_colored, thresh_colored, final_boxed_image):
+def display_live_results(color_image, bounding_image, mask, extracted_depth_colored, 
+                        depth_denoised_colored, thresh_colored, final_boxed_image):
     """
-    Display all pipeline results in separate windows.
+    Display all pipeline results in a single combined window for live processing.
     
     Args:
         color_image (np.ndarray): Original color image
@@ -281,20 +281,148 @@ def display_results(color_image, bounding_image, mask, extracted_depth_colored,
         thresh_colored (np.ndarray): Colored thresholded depth
         final_boxed_image (np.ndarray): Final result with crystal analysis
     """
-    # Display all images
-    cv2.imshow('Color Image', color_image)
-    cv2.imshow('Bounding Box', bounding_image)
-    cv2.imshow('Mask', mask)
-    cv2.imshow('Depth Image', extracted_depth_colored)
-    cv2.imshow('Denoised Depth', depth_denoised_colored)
-    cv2.imshow('Thresholded Depth', thresh_colored)
-    cv2.imshow('Boxed Map', final_boxed_image)
+    # Convert mask to 3-channel for display
+    mask_colored = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
     
-    # Wait for user to press 'q'
-    while True:
-        key = cv2.waitKey(1)
-        if key == ord('q'):
-            break
+    # Resize images for better display (smaller for live processing)
+    height = 240
+    width = int(height * color_image.shape[1] / color_image.shape[0])
+    
+    # Resize all images
+    images = [
+        cv2.resize(color_image, (width, height)),
+        cv2.resize(bounding_image, (width, height)),
+        cv2.resize(mask_colored, (width, height)),
+        cv2.resize(extracted_depth_colored, (width, height)),
+        cv2.resize(depth_denoised_colored, (width, height)),
+        cv2.resize(thresh_colored, (width, height)),
+        cv2.resize(final_boxed_image, (width, height))
+    ]
+    
+    # Add labels
+    labels = ['Original', 'YOLO Detection', 'GrabCut Mask', 'Extracted Depth', 
+              'Denoised Depth', 'Thresholded', 'Crystal Analysis']
+    
+    for img, label in zip(images, labels):
+        cv2.putText(img, label, (5, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+    
+    # Create empty space for 8th position
+    empty_img = np.zeros_like(images[0])
+    images.append(empty_img)
+    
+    # Combine in 2x4 grid
+    top_row = np.hstack(images[:4])
+    bottom_row = np.hstack(images[4:])
+    combined = np.vstack([top_row, bottom_row])
+    
+    cv2.imshow('Live Crystal Detection Pipeline', combined)
+
+
+def display_live_results_simple(color_image, final_boxed_image=None):
+    """
+    Display original and final result in separate windows for live processing.
+    
+    Args:
+        color_image (np.ndarray): Original color image
+        final_boxed_image (np.ndarray): Final result with crystal analysis (optional)
+    """
+    # Show original image
+    cv2.imshow('Live Camera Feed', color_image)
+    
+    # Show final result if available, otherwise show original again
+    if final_boxed_image is not None:
+        cv2.imshow('Crystal Detection Result', final_boxed_image)
+    else:
+        cv2.imshow('Crystal Detection Result', color_image)
+
+
+def process_live_frame(color_image, depth_image, frame_count):
+    """
+    Process a single live frame through the pipeline.
+    
+    Args:
+        color_image (np.ndarray): Input color image
+        depth_image (np.ndarray): Input depth image
+        frame_count (int): Current frame number
+        
+    Returns:
+        bool: True if processing succeeded, False otherwise
+    """
+    try:
+        print(f"\n=== Processing Frame {frame_count} ===")
+        
+        # Step 1: Detect and segment vial
+        mask, bounding_image = detect_and_segment_vial(color_image)
+        if mask is None or bounding_image is None:
+            print(f"Vial detection failed for frame {frame_count}. Showing original image...")
+            # Still display the camera feed even if detection fails
+            display_live_results_simple(color_image)
+            return False
+        
+        # Step 2: Process depth data
+        extracted_depth, depth_denoised, thresh = process_depth_data(mask, depth_image)
+        
+        # Step 3: Create binary map
+        contourmap = create_binary_map(thresh)
+        
+        # Step 4: Analyze crystals
+        individual_boxed_images, final_boxed_image, midpoint_coords = analyze_crystals(contourmap, color_image)
+        
+        # Step 5: Display results (original and final)
+        display_live_results_simple(color_image, final_boxed_image)
+        
+        print(f"Successfully processed frame {frame_count}")
+        return True
+        
+    except Exception as e:
+        print(f"Error processing frame {frame_count}: {e}")
+        # Still display the camera feed even if processing fails
+        display_live_results_simple(color_image)
+        return False
+
+
+def run_live_pipeline():
+    """Run the crystal detection pipeline on live camera data."""
+    print("=== Starting Live Crystal Detection Pipeline ===")
+    print("Press 'q' to quit")
+    
+    # Initialize camera
+    pipeline, profile = getdata.initialize_camera()
+    if pipeline is None:
+        print("Failed to initialize camera")
+        return
+    
+    frame_count = 0
+    
+    try:
+        while True:
+            # Get frames from camera
+            color_image, depth_image = getdata.get_live_frame(pipeline)
+            if color_image is None or depth_image is None:
+                print("Failed to get frames")
+                continue
+            
+            frame_count += 1
+            
+            # Always display camera feed, regardless of processing success
+            if depth_image is not None:
+                # Try to process frame through pipeline
+                success = process_live_frame(color_image, depth_image, frame_count)
+            else:
+                # If no depth data, just show the color image
+                display_live_results_simple(color_image)
+            
+            # Handle key presses
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord('q'):
+                print("Quitting live pipeline...")
+                break
+    
+    finally:
+        # Clean up
+        getdata.cleanup_camera(pipeline)
+        cv2.destroyAllWindows()
+        print(f"\nLive pipeline ended. Processed {frame_count} frames.")
 
 
 def save_combined_results(color_image, bounding_image, mask, extracted_depth_colored, 
@@ -360,113 +488,113 @@ def save_combined_results(color_image, bounding_image, mask, extracted_depth_col
     cv2.imwrite(output_path, combined_image)
     
     print(f"Combined results saved to: {output_path}")
-    print(f"Combined image size: {combined_image.shape}")
     
     return output_path
 
 
-def create_failed_images_log(failed_images):
-    """
-    Create a text file listing all failed images with reasons.
+def main():
+    """Main pipeline orchestrator - choose between live camera or static images"""
+    print("=== Crystal Detection Pipeline ===")
+    print("Choose processing mode:")
+    print("1. Live camera processing")
+    print("2. Process single random image")
+    print("3. Process all images sequentially")
     
-    Args:
-        failed_images (list): List of failed image descriptions
-    """
-    if not failed_images:
-        return
+    while True:
+        choice = input("Enter your choice (1, 2, or 3): ").strip()
+        if choice in ['1', '2', '3']:
+            break
+        print("Invalid choice. Please enter 1, 2, or 3.")
     
-    # Ensure results folder exists
-    results_folder = 'results'
-    if not os.path.exists(results_folder):
-        os.makedirs(results_folder)
-    
-    # Write log file
-    log_file_path = os.path.join(results_folder, 'failed_images.txt')
-    with open(log_file_path, 'w') as f:
-        f.write("FAILED IMAGES LOG\n")
-        f.write("=" * 50 + "\n")
-        f.write(f"Total failed images: {len(failed_images)}\n")
-        f.write(f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-        f.write("=" * 50 + "\n\n")
+    if choice == '1':
+        run_live_pipeline()
+    elif choice == '2':
+        # Process single random image with interactive display
+        print("\n=== Processing Single Random Image ===")
         
-        for i, failed_image in enumerate(failed_images, 1):
-            f.write(f"{i:3d}. {failed_image}\n")
+        try:
+            # Load random image
+            color_image, depth_image, image_name = getdata.get_random_image()
+            print(f"Processing: {image_name}")
+            
+            # Process through pipeline
+            success = process_single_image(color_image, depth_image, image_name)
+            if not success:
+                print(f"Processing failed for {image_name}.")
+                return
+            
+            # Regenerate results for display
+            mask, bounding_image = detect_and_segment_vial(color_image)
+            extracted_depth, depth_denoised, thresh = process_depth_data(mask, depth_image)
+            contourmap = create_binary_map(thresh)
+            individual_boxed_images, final_boxed_image, midpoint_coords = analyze_crystals(contourmap, color_image)
+            extracted_depth_colored, depth_denoised_colored, thresh_colored = create_visualizations(
+                extracted_depth, depth_denoised, thresh
+            )
+            
+            # Display results interactively
+            print(f"Displaying results for {image_name}. Press 'q' to close windows.")
+            display_results(color_image, bounding_image, mask, extracted_depth_colored,
+                           depth_denoised_colored, thresh_colored, final_boxed_image)
+            
+        except Exception as e:
+            print(f"Error processing random image: {e}")
     
-    print(f"Failed images log created: {log_file_path}")
+    else:
+        # Process all images sequentially
+        process_all_images()
+
+
+# Keep existing functions for static image processing
+def display_results(color_image, bounding_image, mask, extracted_depth_colored, 
+                   depth_denoised_colored, thresh_colored, final_boxed_image):
+    """Display all pipeline results in separate windows."""
+    cv2.imshow('Color Image', color_image)
+    cv2.imshow('Bounding Box', bounding_image)
+    cv2.imshow('Mask', mask)
+    cv2.imshow('Depth Image', extracted_depth_colored)
+    cv2.imshow('Denoised Depth', depth_denoised_colored)
+    cv2.imshow('Thresholded Depth', thresh_colored)
+    cv2.imshow('Boxed Map', final_boxed_image)
+    
+    while True:
+        key = cv2.waitKey(1)
+        if key == ord('q'):
+            break
 
 
 def process_single_image(color_image, depth_image, image_name):
-    """
-    Process a single image through the entire pipeline.
-    
-    Args:
-        color_image (np.ndarray): Input color image
-        depth_image (np.ndarray): Input depth image
-        image_name (str): Name of the image being processed
-        
-    Returns:
-        bool: True if processing succeeded, False otherwise
-    """
+    """Process a single image through the entire pipeline."""
     print(f"\n=== Processing {image_name} ===")
     
-    # Step 1: Detect and segment vial
     mask, bounding_image = detect_and_segment_vial(color_image)
     if mask is None or bounding_image is None:
         print(f"Vial detection failed for {image_name}. Skipping...")
         return False
     
-    # Step 2: Process depth data
     extracted_depth, depth_denoised, thresh = process_depth_data(mask, depth_image)
-    
-    # Step 3: Create binary map
     contourmap = create_binary_map(thresh)
-    
-    # Step 4: Analyze crystals
     individual_boxed_images, final_boxed_image, midpoint_coords = analyze_crystals(contourmap, color_image)
-    
-    # Step 5: Create visualizations
     extracted_depth_colored, depth_denoised_colored, thresh_colored = create_visualizations(
         extracted_depth, depth_denoised, thresh
     )
     
-    # Step 6: Save combined results
     save_combined_results(color_image, bounding_image, mask, extracted_depth_colored,
                          depth_denoised_colored, thresh_colored, final_boxed_image, image_name)
     
     print(f"Successfully processed {image_name}")
-    return True, bounding_image, mask, extracted_depth_colored, depth_denoised_colored, thresh_colored, final_boxed_image
-
-
-def process_single_random_image():
-    """Process a single random image with interactive display."""
-    try:
-        # Load random image
-        color_image, depth_image, image_name = getdata.get_random_image()
-        
-        # Process through pipeline
-        success, bounding_image, mask, extracted_depth_colored, depth_denoised_colored, thresh_colored, final_boxed_image = process_single_image(color_image, depth_image, image_name)
-        if not success:
-            print(f"Processing failed for {image_name}.")
-            return
-        # Display results
-        display_results(color_image, bounding_image, mask, extracted_depth_colored,
-                       depth_denoised_colored, thresh_colored, final_boxed_image)
-        
-    except Exception as e:
-        print(f"Error processing random image: {e}")
+    return True
 
 
 def process_all_images():
     """Process all images sequentially without interactive display."""
     print("\n=== Processing All Images Sequentially ===")
     
-    # Initialize counters and tracking
     successful_count = 0
     failed_count = 0
     failed_images = []
     
     try:
-        # Process each image in the dataset
         for color_image, depth_image, image_name in getdata.get_all_images():
             try:
                 success = process_single_image(color_image, depth_image, image_name)
@@ -486,10 +614,8 @@ def process_all_images():
         print(f"Error in dataset processing: {e}")
         return
     
-    # Create failed images log
     create_failed_images_log(failed_images)
     
-    # Print summary
     print(f"\n=== Processing Complete ===")
     print(f"Successfully processed: {successful_count} images")
     print(f"Failed to process: {failed_count} images")
@@ -499,13 +625,27 @@ def process_all_images():
         print(f"Failed images logged to: results/failed_images.txt")
 
 
-def main():
-    """Main pipeline orchestrator."""
-    # Toggle between single random image and all images
-    # Uncomment the desired processing mode:
+def create_failed_images_log(failed_images):
+    """Create a text file listing all failed images with reasons."""
+    if not failed_images:
+        return
     
-    process_single_random_image()  # For single image with interactive display
-    #process_all_images()             # For batch processing all images
+    results_folder = 'results'
+    if not os.path.exists(results_folder):
+        os.makedirs(results_folder)
+    
+    log_file_path = os.path.join(results_folder, 'failed_images.txt')
+    with open(log_file_path, 'w') as f:
+        f.write("FAILED IMAGES LOG\n")
+        f.write("=" * 50 + "\n")
+        f.write(f"Total failed images: {len(failed_images)}\n")
+        f.write(f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write("=" * 50 + "\n\n")
+        
+        for i, failed_image in enumerate(failed_images, 1):
+            f.write(f"{i:3d}. {failed_image}\n")
+    
+    print(f"Failed images log created: {log_file_path}")
 
 
 if __name__ == "__main__":
