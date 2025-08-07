@@ -148,24 +148,6 @@ def create_binary_map(thresh):
     
     return contourmap
 
-
-def analyze_crystals(contourmap, color_image):
-    """
-    Detect and analyze crystal formations.
-    
-    Args:
-        contourmap (np.ndarray): Binary map of crystal areas
-        color_image (np.ndarray): Original color image
-        
-    Returns:
-        tuple: (individual_contour_images, contoured_image, midpoint_coords)
-    """
-    individual_contour_images, contoured_image, midpoint_coords = find_contours(contourmap, color_image)
-    #print(f"Crystal midpoint coordinates: {midpoint_coords}")
-
-    return individual_contour_images, contoured_image, midpoint_coords
-
-
 def detect_and_segment_vial(color_image):
     """
     Detect vial using YOLO and segment it using GrabCut.
@@ -261,7 +243,7 @@ def process_live_frame(color_image, depth_image, frame_count):
         print(f"\n=== Processing Frame {frame_count} ===")
         
         # Step 1: Detect and segment vial
-        mask, bounding_image = detect_and_segment_vial(color_image)
+        mask, bounding_image, yolo_rect = detect_and_segment_vial(color_image)
         if mask is None or bounding_image is None:
             print(f"Vial detection failed for frame {frame_count}. Showing original image...")
             # Still display the camera feed even if detection fails
@@ -275,7 +257,7 @@ def process_live_frame(color_image, depth_image, frame_count):
         contourmap = create_binary_map(thresh)
         
         # Step 4: Analyze crystals
-        individual_contour_images, contoured_image, midpoint_coords = analyze_crystals(contourmap, color_image)
+        individual_contour_images, contoured_image, midpoint_coords = find_contours(contourmap, color_image)
 
         # Step 5: Display results (original and final)
         display_live_results(color_image, contoured_image)
@@ -682,7 +664,7 @@ def process_all_images_with_evaluation(dataset_path):
                 
                 extracted_depth, depth_denoised, thresh = process_depth_data(mask, depth_image)
                 contourmap = create_binary_map(thresh)
-                individual_contour_images, contoured_image, midpoint_coords = analyze_crystals(contourmap, color_image)
+                individual_contour_images, contoured_image, midpoint_coords = find_contours(contourmap, color_image)
 
                 # Compare with manual labels (now includes yolo_rect parameter)
                 correctly_guessed, missed_crystal, incorrect_guess, evaluation_image, tp, fp, tn, fn = compare_with_manual_labels(
@@ -867,14 +849,14 @@ def process_single_image(color_image, depth_image, image_name):
     """Process a single image through the entire pipeline."""
     print(f"\n=== Processing {image_name} ===")
     
-    mask, bounding_image = detect_and_segment_vial(color_image)
+    mask, bounding_image, yolo_rect = detect_and_segment_vial(color_image)
     if mask is None or bounding_image is None:
         print(f"Vial detection failed for {image_name}. Skipping...")
         return False
     
     extracted_depth, depth_denoised, thresh = process_depth_data(mask, depth_image)
     contourmap = create_binary_map(thresh)
-    individual_contour_images, contoured_image, midpoint_coords = analyze_crystals(contourmap, color_image)
+    individual_contour_images, contoured_image, midpoint_coords = find_contours(contourmap, color_image)
     extracted_depth_colored, depth_denoised_colored, thresh_colored = create_visualizations(
         extracted_depth, depth_denoised, thresh
     )
