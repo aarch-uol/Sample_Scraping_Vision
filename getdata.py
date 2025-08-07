@@ -119,7 +119,7 @@ def get_random_image():
         ValueError: If no valid image pairs are found in the dataset
     """
     # Define dataset paths
-    dataset_path = 'Dataset2'
+    dataset_path = 'Test_dataset'
     color_dir = os.path.join(dataset_path, 'color_images')
     depth_dir = os.path.join(dataset_path, 'depth_images')
     
@@ -154,7 +154,7 @@ def get_random_image():
     raise ValueError("No valid image and depth pairs found in the dataset directory.")
 
 
-def get_all_images():
+def get_all_images(dataset_path):
     """
     Generator that yields all valid image pairs sequentially.
     
@@ -165,7 +165,6 @@ def get_all_images():
         ValueError: If dataset directories are not found or no images exist
     """
     # Define dataset paths
-    dataset_path = 'Dataset2'
     color_dir = os.path.join(dataset_path, 'color_images')
     depth_dir = os.path.join(dataset_path, 'depth_images')
     
