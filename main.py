@@ -8,7 +8,7 @@ import evaluations  # Import the evaluations module
 import saving  # Import the saving module
 import live_camera  # Import the live camera module
 import all_image_processor  # Import the all image processor module
-
+import spatula_grouping  # Import the spatula grouping module
 
 
 
@@ -44,7 +44,8 @@ def midpoint_depth(depth_image, threshold_ratio=0.5):
         return None
     
     # Calculate threshold and apply
-    threshold = closest + threshold_ratio * (furthest - closest)
+    #threshold = closest + threshold_ratio * (furthest - closest)
+    threshold = closest + 50
     depth_image_with_thresh[depth_image > threshold] = 0
     print(f"Depth range: {closest} - {furthest}")
     
@@ -66,7 +67,8 @@ def find_contours(image_data):
     
     # Initialize variables
     output = np.copy(image_data.color_image)
-    image_data.contoured_image = image_data.color_image.copy()
+    image_data.contoured_image = np.zeros_like(image_data.color_image)
+    #image_data.contoured_image = image_data.color_image.copy()
     image_data.individual_contour_images = []
     image_data.midpoint_coords = []
     
@@ -117,8 +119,11 @@ def process_depth_data(image_data):
 
     
     # Denoise the depth image
-    image_data.depth_denoised = denoise(image_data.extracted_depth)
-    
+    #image_data.depth_denoised = denoise(image_data.extracted_depth)
+    image_data.depth_denoised = image_data.extracted_depth.copy()
+
+
+
     # Apply threshold
     image_data.thresh = np.copy(image_data.depth_denoised)
     threshold = midpoint_depth(image_data.thresh)
@@ -252,7 +257,8 @@ def process_single_image(image_data):
     image_data = create_binary_map(image_data)
     image_data = find_contours(image_data)
     image_data = saving.create_visualizations(image_data)
-    #image_data.spatula_results = spatula_extract.process_spatula_separation(image_data.contoured_image, image_data.color_image)
+    #spatula_extract.process_spatula_separation(image_data.contoured_image, image_data.color_image)
+    image_data = spatula_grouping.process_crystal_clustering(image_data)
 
 
     # Save results (optional)
@@ -268,7 +274,7 @@ def main():
     print("1. Live camera processing")
     print("2. Process all images sequentially")
     print("3. Process all images with manual label evaluation")
-    dataset_path = 'Test_dataset3'  # Path to the dataset containing images
+    dataset_path = 'Test_dataset4'  # Path to the dataset containing images
     
     while True:
         choice = input("Enter your choice (1, 2, 3): ").strip()
