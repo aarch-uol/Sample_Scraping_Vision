@@ -16,7 +16,7 @@ def find_bounding_box(image):
         tuple: Bounding box coordinates (x1, y1, x2, y2) or None if no valid detection
     """
     # Run YOLO prediction
-    results = model.predict(image)
+    results = model.predict(image, verbose=False)
     result = results[0]
     
     # Check if any boxes were detected
@@ -65,8 +65,8 @@ def find_bounding_box(image):
     central_box = min(valid_boxes, key=lambda x: x['distance'])
     
     # Log selection information
-    print(f"Selected central box - Probability: {central_box['confidence']}, "
-          f"Distance from center: {central_box['distance']:.1f}")
+    #print(f"Selected central box - Probability: {central_box['confidence']}, "
+    #     f"Distance from center: {central_box['distance']:.1f}")
     
     # Return bounding box coordinates
     rect = (central_box['coords'][0], central_box['coords'][1], 

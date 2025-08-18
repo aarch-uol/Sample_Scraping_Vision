@@ -74,7 +74,8 @@ def save_combined_results(image_data, results_path = 'results'):
         (image_data.extracted_depth_colored.copy(), 'Extracted Depth'),
         (image_data.depth_denoised_colored.copy(), 'Denoised Depth'),
         (image_data.thresh_colored.copy(), 'Thresholded'),
-        (image_data.contoured_image.copy(), 'Crystal Analysis')
+        (image_data.contoured_image.copy(), 'Crystal Analysis'),
+        (image_data.spatula_results_smoothed_cropped.copy(), 'Final Crystals')
     ]
     
     labeled_images = []
@@ -84,7 +85,7 @@ def save_combined_results(image_data, results_path = 'results'):
     
     # Combine images in 2x4 grid
     top_row = np.hstack(labeled_images[:4])
-    bottom_row = np.hstack(labeled_images[4:] + [np.zeros_like(labeled_images[0])])  # Add empty space
+    bottom_row = np.hstack(labeled_images[4:])
     combined_image = np.vstack([top_row, bottom_row])
     
     # Save combined image
@@ -118,3 +119,52 @@ def create_visualizations(image_data):
     image_data.thresh_colored = cv2.applyColorMap(image_data.thresh_colored, cv2.COLORMAP_JET);
     
     return image_data
+
+
+def save_simplified_results(image_data, results_path='results'):
+    """
+    Combine original image and final crystal results into a single image and save to results folder.
+    
+    Args:
+        image_data (ImageData): ImageData object containing color_image and spatula_results_smoothed_cropped
+        results_path (str): Path to save results
+        
+    Returns:
+        str: Path to saved combined image
+    """
+    # Create results folder
+    if not os.path.exists(results_path):
+        os.makedirs(results_path)
+    
+    # Get image dimensions for dynamic scaling
+    h, w = image_data.color_image.shape[:2]
+    
+    # Calculate dynamic text properties
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = max(0.5, min(2.0, w / 800))
+    color_white = (255, 255, 255)
+    thickness = max(1, int(w / 400))
+    text_y = max(30, int(h / 20))
+    
+    # Create labeled copies
+    images_to_label = [
+        (image_data.color_image.copy(), 'Original Image'),
+        (image_data.spatula_results_smoothed_cropped.copy(), 'Detected Crystals')
+    ]
+    
+    labeled_images = []
+    for img, label in images_to_label:
+        cv2.putText(img, label, (10, text_y), font, font_scale, color_white, thickness)
+        labeled_images.append(img)
+    
+    # Combine images side by side (1x2 grid)
+    combined_image = np.hstack(labeled_images)
+    
+    # Save combined image
+    base_name = os.path.splitext(image_data.image_name)[0]
+    output_path = os.path.join(results_path, f"{base_name}_simplified.jpg")
+    cv2.imwrite(output_path, combined_image)
+    
+    #print(f"Simplified results saved to: {output_path}")
+    
+    return output_path

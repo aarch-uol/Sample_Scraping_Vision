@@ -22,3 +22,7 @@ class ImageData:
         self.contoured_image = None # Final image with green contours drawn around detected crystals
         self.midpoint_coords = None # Midpoint coordinates of each detected contour
         self.spatula_results = None # Results from spatula extraction process
+        self.spatula_results_smoothed = None # Smoothed results from spatula extraction process
+        self.coordinates = None # Coordinates of detected crystals
+        self.cropped_coords = None # Cropped coordinates of detected crystals
+        self.spatula_results_smoothed_cropped = None # Smoothed and cropped results from spatula extraction process

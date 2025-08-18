@@ -30,7 +30,7 @@ def run_live_pipeline(process_single_image_func):
             # Process the live frame
             success, image_data = process_single_image_func(image_data)
             # Display results
-            display_live_results(color_image, image_data.contoured_image if success else None)
+            display_live_results(color_image, image_data.spatula_results_smoothed_cropped if success else None)
             print(f"Processed frame {frame_count}")
             # Handle key presses
             key = cv2.waitKey(1) & 0xFF

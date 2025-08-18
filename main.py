@@ -3,12 +3,12 @@ import numpy as np
 
 # Import custom modules
 import YOLO_boundingbox
-import spatula_extract
 import evaluations  # Import the evaluations module
 import saving  # Import the saving module
 import live_camera  # Import the live camera module
 import all_image_processor  # Import the all image processor module
 import spatula_grouping  # Import the spatula grouping module
+import video_pipeline  # Import the video pipeline module
 
 
 
@@ -45,9 +45,8 @@ def midpoint_depth(depth_image, threshold_ratio=0.5):
     
     # Calculate threshold and apply
     #threshold = closest + threshold_ratio * (furthest - closest)
-    threshold = closest + 50
+    threshold = closest + 100
     depth_image_with_thresh[depth_image > threshold] = 0
-    print(f"Depth range: {closest} - {furthest}")
     
     return threshold
 
@@ -127,7 +126,6 @@ def process_depth_data(image_data):
     # Apply threshold
     image_data.thresh = np.copy(image_data.depth_denoised)
     threshold = midpoint_depth(image_data.thresh)
-    print(f"Threshold value: {threshold}")
     image_data.thresh[image_data.depth_denoised > threshold] = 0
     
     return image_data
@@ -175,7 +173,6 @@ def detect_and_segment_vial(image_data):
     # Draw bounding box for visualization
     image_data.bounding_image = image_data.color_image.copy()
     cv2.rectangle(image_data.bounding_image, (rect[0], rect[1]), (rect[2], rect[3]), (255, 0, 0), 3)
-    print(f'Rectangle coordinates: {rect}')
     
     # Convert rect format for GrabCut (x, y, width, height)
     rect = list(rect)
@@ -235,18 +232,170 @@ def denoise(depth_image):
     #depth_image = cv2.GaussianBlur(depth_image, (5, 5), 0)
     kernel = np.ones((3,3),np.uint8)
     # Apply morphological opening to remove noise
-    denoised_image = cv2.morphologyEx(depth_image,cv2.MORPH_OPEN,kernel, iterations = 3)
+    denoised_image = cv2.morphologyEx(depth_image,cv2.MORPH_OPEN,kernel, iterations = 2)
     # Apply morphological closing to fill small holes
-    denoised_image = cv2.morphologyEx(denoised_image, cv2.MORPH_CLOSE, kernel, iterations = 2)
+    #denoised_image = cv2.morphologyEx(denoised_image, cv2.MORPH_CLOSE, kernel, iterations = 2)
     
     
     
     return denoised_image
 
+def extract_3d_coordinates(image_data):
+    """
+    Extract 3D coordinates from white pixels in spatula_results_smoothed.
+    
+    Args:
+        image_data (ImageData): ImageData object containing spatula_results_smoothed and depth_image
+        
+    Returns:
+        ImageData: Updated ImageData object with coordinates array
+    """
+    # Find white pixels in spatula_results_smoothed
+    # For grayscale image, white pixels have value 255
+    # For color image, white pixels have all channels at 255
+    if len(image_data.spatula_results_smoothed.shape) == 3:
+        # Color image - check if all channels are 255
+        white_mask = np.all(image_data.spatula_results_smoothed == 255, axis=2)
+    else:
+        # Grayscale image - check if pixel value is 255
+        white_mask = image_data.spatula_results_smoothed == 255
+    
+    # Get coordinates of white pixels
+    white_coords = np.where(white_mask)
+    y_coords = white_coords[0]  # Row indices (y positions)
+    x_coords = white_coords[1]  # Column indices (x positions)
+    
+    # Extract corresponding depth values
+    depth_values = image_data.depth_image[y_coords, x_coords]
+    
+    # Create 3D coordinate array: [x, y, depth]
+    num_points = len(x_coords)
+    coordinates_3d = np.zeros((num_points, 3))
+    coordinates_3d[:, 0] = x_coords  # X positions
+    coordinates_3d[:, 1] = y_coords  # Y positions  
+    coordinates_3d[:, 2] = depth_values  # Depth values
+    
+    # Store in image_data
+    image_data.coordinates = coordinates_3d
+    return image_data
+
+
+def save_coordinates_to_csv(image_data, filename=None):
+    """
+    Save 3D coordinates to a CSV file.
+    
+    Args:
+        image_data (ImageData): ImageData object containing coordinates array
+        filename (str): Output CSV filename. If None, uses image name
+    """
+    import csv
+    import os
+    
+    # Generate filename if not provided
+    if filename is None:
+        base_name = os.path.splitext(image_data.image_name)[0]
+        filename = f"{base_name}_3d_coordinates.csv"
+    
+    # Create output directory if it doesn't exist
+    output_dir = "coordinate_results"
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    
+    # Full path for the CSV file
+    csv_path = os.path.join(output_dir, filename)
+    
+    # Write coordinates to CSV
+    try:
+        with open(csv_path, 'w', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            
+            # Write header
+            writer.writerow(['X', 'Y', 'Depth'])
+            
+            # Write coordinate data
+            for coord in image_data.cropped_coords:
+                writer.writerow([int(coord[0]), int(coord[1]), int(coord[2])])
+
+
+    except Exception as e:
+        print(f"Error saving coordinates to CSV: {e}")
+
+
+def crop_and_mask_results(image_data, crop_percent):
+    """
+    Crop the YOLO rectangle horizontally and apply as mask to coordinates and spatula results.
+    
+    Args:
+        image_data (ImageData): ImageData object containing yolo_rect, coordinates, and spatula_results_smoothed
+        crop_percent (float): Percentage to crop from each side horizontally (0.0 to 0.5)
+                             e.g., 0.1 crops 10% from left and 10% from right (20% total)
+    
+    Returns:
+        ImageData: Updated ImageData object with cropped_coords and spatula_results_smoothed_cropped
+    """
+    # Check if required data exists
+    if image_data.yolo_rect is None:
+        print("No YOLO rectangle found. Cannot crop.")
+        return image_data
+    
+    if image_data.coordinates is None:
+        print("No coordinates found. Cannot crop coordinates.")
+        return image_data
+    
+    if image_data.spatula_results_smoothed is None:
+        print("No spatula results found. Cannot crop spatula results.")
+        return image_data
+    
+    # Get original YOLO rectangle (x, y, width, height)
+    x, y, width, height = image_data.yolo_rect
+    
+    # Calculate crop amount (pixels to remove from each side)
+    crop_pixels = int(width * crop_percent)
+    
+    # Create cropped rectangle coordinates
+    cropped_x_start = x + crop_pixels
+    cropped_x_end = x + width - crop_pixels
+    cropped_y_start = y
+    cropped_y_end = y + height
+    
+    # Create mask for coordinates
+    coord_mask = (
+        (image_data.coordinates[:, 0] >= cropped_x_start) &  # X >= left bound
+        (image_data.coordinates[:, 0] <= cropped_x_end) &    # X <= right bound
+        (image_data.coordinates[:, 1] >= cropped_y_start) &  # Y >= top bound
+        (image_data.coordinates[:, 1] <= cropped_y_end)      # Y <= bottom bound
+    )
+    
+    # Apply mask to coordinates
+    image_data.cropped_coords = image_data.coordinates[coord_mask]
+    
+    # Create spatial mask for spatula results image
+    image_height, image_width = image_data.spatula_results_smoothed.shape[:2]
+    
+    # Ensure bounds are within image dimensions
+    cropped_x_start = max(0, min(cropped_x_start, image_width))
+    cropped_x_end = max(0, min(cropped_x_end, image_width))
+    cropped_y_start = max(0, min(cropped_y_start, image_height))
+    cropped_y_end = max(0, min(cropped_y_end, image_height))
+    
+    # Create a copy of spatula results and apply mask
+    image_data.spatula_results_smoothed_cropped = image_data.spatula_results_smoothed.copy()
+    
+    # Set pixels outside the cropped rectangle to black
+    # Set everything to black first
+    image_data.spatula_results_smoothed_cropped[:, :] = 0
+    
+    # Copy only the cropped region from original
+    image_data.spatula_results_smoothed_cropped[cropped_y_start:cropped_y_end, 
+                                                cropped_x_start:cropped_x_end] = \
+        image_data.spatula_results_smoothed[cropped_y_start:cropped_y_end, 
+                                           cropped_x_start:cropped_x_end]
+    
+    return image_data
+
 
 def process_single_image(image_data):
     """Process a single image through the entire pipeline."""
-    print(f"\n=== Processing {image_data.image_name} ===")
     
     image_data = detect_and_segment_vial(image_data)
     if image_data.grabcut_mask is None or image_data.bounding_image is None:
@@ -257,14 +406,31 @@ def process_single_image(image_data):
     image_data = create_binary_map(image_data)
     image_data = find_contours(image_data)
     image_data = saving.create_visualizations(image_data)
-    #spatula_extract.process_spatula_separation(image_data.contoured_image, image_data.color_image)
     image_data = spatula_grouping.process_crystal_clustering(image_data)
+    image_data.spatula_results_smoothed = denoise(image_data.spatula_results)
 
+    # Create a variable to hold the 3d coordinates of the detected crystals
+    image_data = extract_3d_coordinates(image_data)
+    
+    # Crop the results by x% on each side horizontally
+    crop_percent = 0
+    image_data = crop_and_mask_results(image_data, crop_percent)
+    '''
+    cv2.imshow('spatula_results_smoothed', image_data.spatula_results_smoothed)
+    cv2.imshow('contoured_image', image_data.contoured_image)
+    cv2.imshow('spatula_results_smoothed_cropped', image_data.spatula_results_smoothed_cropped)
+    cv2.imshow('original_image', image_data.color_image)
+    cv2.waitKey(0)  # Wait for a key press to continue
+    cv2.destroyAllWindows()
+    '''
+    # Save coordinates to CSV (now using cropped coordinates)
+    save_coordinates_to_csv(image_data)
+
+    
+    
 
     # Save results (optional)
     #output_path = saving.save_combined_results(image_data, results_path='results')
-
-    print(f"Successfully processed {image_data.image_name}")
     return True, image_data
 
 def main():
@@ -289,9 +455,18 @@ def main():
         # Process all images sequentially
         all_image_processor.process_all_images(dataset_path, process_single_image)
 
+    elif choice == '3':
+        # Process all images with manual label evaluation
+        video_pipeline.process_all_bag_videos(
+            bag_folder_path='Bag_files',
+            process_single_image_func=process_single_image,
+            frame_skip=1,
+            max_frames_per_bag=None
+        )
     else:
         # Process all images with manual label evaluation
         evaluations.process_all_images_with_evaluation(dataset_path, process_single_image)
+    
 
 
 if __name__ == "__main__":

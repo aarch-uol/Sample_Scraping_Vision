@@ -105,7 +105,7 @@ def main():
         
     finally:
         cleanup_camera(pipeline)
-        cv2.destroyAllWindows()
+        cv2.destroy_all_windows()
 
 
 def get_random_image():
@@ -203,8 +203,76 @@ def get_all_images(dataset_path):
         
         # Successfully loaded both images
         valid_count += 1
-        print(f"Processing image {valid_count}: {image_name}")
         yield color_image, depth_image, image_name[:-4]
+
+def get_frames_from_bag_files(bag_folder_path):
+    """
+    Generator that yields frames from all bag files in the specified folder.
+    
+    Args:
+        bag_folder_path (str): Path to the folder containing bag files
+        
+    Yields:
+        tuple: (color_image, depth_image, image_name) for each frame in the bag files
+        
+    Raises:
+        ValueError: If no bag files are found in the specified folder
+    """
+    pipeline = rs.pipeline()
+    config = rs.config()
+    # Validate bag folder
+    if not os.path.exists(bag_folder_path):
+        raise ValueError(f"Bag folder not found: {bag_folder_path}")
+    
+    # Get list of bag files
+    bag_files = [f for f in os.listdir(bag_folder_path) if f.endswith('.bag')]
+    if not bag_files:
+        raise ValueError("No bag files found in the specified folder.")
+    
+    # Process each bag file
+    for bag_file in sorted(bag_files):
+        print(f"Processing bag file: {bag_file}")
+        
+        # Create full path to bag file
+        bag_file_path = os.path.join(bag_folder_path, bag_file)
+        
+        # Enable playback from file
+        config.enable_device_from_file(bag_file_path, repeat_playback=False)
+        
+        # Start pipeline
+        profile = pipeline.start(config)
+        
+        # Get playback device
+        playback = profile.get_device().as_playback()
+        playback.set_real_time(False)  # Allow manual control of playback speed
+        try:
+            while True:
+                # Wait for frames
+                frames = pipeline.wait_for_frames()
+                depth_frame = frames.get_depth_frame()
+                color_frame = frames.get_color_frame()
+                
+                if not depth_frame or not color_frame:
+                    break  # No more frames
+                
+                # Convert images to numpy arrays
+                depth_image = np.asanyarray(depth_frame.get_data())
+                color_image = np.asanyarray(color_frame.get_data())
+
+                #convert BGR to RGB
+                color_image = cv2.cvtColor(color_image, cv2.COLOR_BGR2RGB)
+                
+                # Create image name based on bag file and frame number
+                frame_number = depth_frame.frame_number
+                image_name = f"{bag_file[:-4]}_frame{frame_number}.jpg"
+                
+                yield color_image, depth_image, image_name
+                
+        except Exception as e:
+            print(f"Error processing bag file {bag_file}: {e}")
+        
+        finally:
+            pipeline.stop()
 
 
 if __name__ == "__main__":
