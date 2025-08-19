@@ -93,7 +93,7 @@ def process_crystal_clustering(image_data):
         hue = int(center[0]) if center[0] < 180 else 179  # Clamp hue to valid range
         saturation = int(center[1])
         
-        if abs(hue - green_hue) < 20 and saturation > 100:  # High saturation threshold
+        if abs(hue - green_hue) < 20 and saturation > 60:  # High saturation threshold
             green_clusters.append(center)
             #print(f"Green cluster found: H={hue}, S={saturation}, V={int(center[2])}")
 
@@ -113,4 +113,106 @@ def process_crystal_clustering(image_data):
     mask_image[non_black_mask] = [255, 255, 255]
     # Update image_data with the clustered image and mask
     image_data.spatula_results = mask_image
+    return image_data
+
+def find_crystal_midpoints(image_data):
+    """
+    Find crystal midpoints using K-means clustering on white pixels in spatula_results_smoothed_cropped.
+    
+    Args:
+        image_data (ImageData): ImageData object containing spatula_results_smoothed_cropped
+    
+    Returns:
+        ImageData: Updated ImageData object with final_midpoints and final_midpoints_image
+    """
+    
+    if image_data.spatula_results_smoothed_cropped is None:
+        print("No spatula_results_smoothed_cropped found. Cannot find midpoints.")
+        return image_data
+    
+    # Step 1: Find white pixels in spatula_results_smoothed_cropped
+    
+    # Color image - check if all channels are 255 (white)
+    white_mask = np.all(image_data.spatula_results_smoothed_cropped == 255, axis=2)
+    
+    # Get coordinates of white pixels
+    white_coords = np.where(white_mask)
+    
+    if len(white_coords[0]) == 0:
+        print("No white pixels found for clustering.")
+        image_data.final_midpoints = np.array([])
+        image_data.final_midpoints_image = image_data.spatula_results_smoothed_cropped.copy()
+        return image_data
+    
+    # Step 2: Determine optimal k value based on white pixel distribution
+    white_pixels = np.column_stack((white_coords[1], white_coords[0]))  # (x, y) format
+    num_white_pixels = len(white_pixels)
+
+    # Heuristic for k: estimate number of clusters based on cropped box area and pixel density
+    
+        # Use the actual cropped rectangle area
+    x, y, width, height = image_data.cropped_rect
+    image_area = width * height
+    
+    white_pixel_density = num_white_pixels / image_area
+    image_data.percentage_coverage = (num_white_pixels / (width * height)) * 100  # Percentage coverage
+    
+    # Estimate k based on density and typical crystal sizes
+    k = max(1, num_white_pixels // 500)  # Default to 1 cluster or fewer based on pixel count
+
+    # Ensure k doesn't exceed number of white pixels
+    k = min(k, num_white_pixels)
+    
+    # Step 3: Apply K-means clustering to white pixel coordinates
+    if k == 1:
+        # Only one cluster - calculate centroid directly
+        centroid_x = np.mean(white_pixels[:, 0])
+        centroid_y = np.mean(white_pixels[:, 1])
+        cluster_centers = np.array([[centroid_x, centroid_y]])
+    else:
+        # Convert to float32 for k-means
+        white_pixels_float = np.float32(white_pixels)
+        
+        # Apply k-means clustering
+        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.2)
+        try:
+            _, labels, cluster_centers = cv2.kmeans(white_pixels_float, k, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
+        except cv2.error as e:
+            print(f"K-means failed: {e}. Using single centroid.")
+            centroid_x = np.mean(white_pixels[:, 0])
+            centroid_y = np.mean(white_pixels[:, 1])
+            cluster_centers = np.array([[centroid_x, centroid_y]])
+    
+    # Step 4: Store midpoints as x,y coordinates
+    image_data.final_midpoints = cluster_centers.astype(int)
+    
+    # Step 5: Create final_midpoints_image and plot red dots
+    image_data.final_midpoints_image = image_data.spatula_results_smoothed_cropped.copy()
+    
+    # Ensure image is in color format for drawing red dots
+    if len(image_data.final_midpoints_image.shape) == 2:
+        # Convert grayscale to color
+        image_data.final_midpoints_image = cv2.cvtColor(image_data.final_midpoints_image, cv2.COLOR_GRAY2BGR)
+    
+    # Draw red dots at each midpoint
+    for midpoint in image_data.final_midpoints:
+        x, y = int(midpoint[0]), int(midpoint[1])
+        
+        # Ensure coordinates are within image bounds
+        if 0 <= x < image_data.final_midpoints_image.shape[1] and 0 <= y < image_data.final_midpoints_image.shape[0]:
+            # Draw red filled circle (BGR format: red is (0, 0, 255))
+            cv2.circle(image_data.final_midpoints_image, (x, y), radius=5, color=(0, 0, 255), thickness=-1)
+            
+            # Optional: Draw a small white border around the red dot for better visibility
+            cv2.circle(image_data.final_midpoints_image, (x, y), radius=6, color=(255, 255, 255), thickness=1)
+
+    #print the midpoints, and the percentage coverage
+    print(f"Percentage coverage of detected crystals: {image_data.percentage_coverage:.2f}%")
+    print(f"Found {len(image_data.final_midpoints)} crystal midpoints")
+    print("Crystal midpoints (x, y):")
+    for midpoint in image_data.final_midpoints:
+        print(f"    ({midpoint[0]}, {midpoint[1]})")
+    # Display the final midpoints image
+    cv2.waitKey(500)  # Update display
+    
     return image_data
