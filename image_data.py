@@ -11,6 +11,7 @@ class ImageData:
         self.bounding_image = None # Color image with bounding box applied by YOLO
         self.grabcut_mask = None # Black and white mask created by GrabCut
         self.yolo_rect = None # Bounding box coordinates from YOLO detection
+        self.cropped_rect = None # Rectangle coordinates for cropping
         self.extracted_depth = None # Depth values extracted using the GrabCut mask
         self.depth_denoised = None # Denoised version of the extracted_depth image
         self.thresh = None # Thresholded version of the depth_denoised image
@@ -26,3 +27,6 @@ class ImageData:
         self.coordinates = None # Coordinates of detected crystals
         self.cropped_coords = None # Cropped coordinates of detected crystals
         self.spatula_results_smoothed_cropped = None # Smoothed and cropped results from spatula extraction process
+        self.final_midpoints_image = None # Final image with midpoints drawn
+        self.final_midpoints = None # Final midpoints of detected crystals
+        self.percentage_coverage = None # Percentage coverage of detected crystals in the image

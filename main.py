@@ -13,7 +13,7 @@ import video_pipeline  # Import the video pipeline module
 
 
 
-def midpoint_depth(depth_image, threshold_ratio=0.5):
+def midpoint_depth(depth_image, threshold_ratio=0.3):
     """
     Calculate threshold for depth image based on closest and furthest points.
     
@@ -44,8 +44,8 @@ def midpoint_depth(depth_image, threshold_ratio=0.5):
         return None
     
     # Calculate threshold and apply
-    #threshold = closest + threshold_ratio * (furthest - closest)
-    threshold = closest + 100
+    threshold = closest + threshold_ratio * (furthest - closest)
+    #threshold = closest + 70
     depth_image_with_thresh[depth_image > threshold] = 0
     
     return threshold
@@ -118,8 +118,8 @@ def process_depth_data(image_data):
 
     
     # Denoise the depth image
-    #image_data.depth_denoised = denoise(image_data.extracted_depth)
-    image_data.depth_denoised = image_data.extracted_depth.copy()
+    image_data.depth_denoised = denoise(image_data.extracted_depth)
+    #image_data.depth_denoised = image_data.extracted_depth.copy()
 
 
 
@@ -220,23 +220,42 @@ def apply_grabcut(img, rect, iter_count=1):
 
 def denoise(depth_image):
     """
-    Denoises the depth image using a Gaussian filter.
+    Denoises the depth image using morphological operations and removes depth outliers.
     
     Parameters:
     - depth_image: The input depth image to be denoised.
     
     Returns:
-    - Denoised depth image.
+    - Denoised depth image with outliers removed.
     """
-    #gaussian filter to smooth the depth image
-    #depth_image = cv2.GaussianBlur(depth_image, (5, 5), 0)
+    # Apply morphological operations first
     kernel = np.ones((3,3),np.uint8)
     # Apply morphological opening to remove noise
-    denoised_image = cv2.morphologyEx(depth_image,cv2.MORPH_OPEN,kernel, iterations = 2)
+    #denoised_image = cv2.morphologyEx(depth_image,cv2.MORPH_OPEN,kernel, iterations = 2)
     # Apply morphological closing to fill small holes
     #denoised_image = cv2.morphologyEx(denoised_image, cv2.MORPH_CLOSE, kernel, iterations = 2)
     
+    denoised_image = depth_image.copy()
+
+    # Remove depth outliers
+    # Get non-zero depth values for statistics
+    non_zero_depths = denoised_image[denoised_image > 0]
     
+    if len(non_zero_depths) > 0:
+        # Calculate mean and standard deviation of non-zero depths
+        mean_depth = np.mean(non_zero_depths)
+        std_depth = np.std(non_zero_depths)
+
+        # Define outlier threshold (pixels beyond 1.5 standard deviations)
+        outlier_threshold = 1.5
+        lower_bound = mean_depth - outlier_threshold * std_depth
+        upper_bound = mean_depth + outlier_threshold * std_depth
+        
+        # Remove outliers by setting them to zero
+        outlier_mask = (denoised_image < lower_bound) | (denoised_image > upper_bound)
+        denoised_image[outlier_mask] = 0
+        
+        print(f"Depth stats: mean={mean_depth:.1f}, std={std_depth:.1f}, bounds=[{lower_bound:.1f}, {upper_bound:.1f}]")
     
     return denoised_image
 
@@ -321,7 +340,7 @@ def save_coordinates_to_csv(image_data, filename=None):
         print(f"Error saving coordinates to CSV: {e}")
 
 
-def crop_and_mask_results(image_data, crop_percent):
+def crop_and_mask_results(image_data, crop_percent, offset=0):
     """
     Crop the YOLO rectangle horizontally and apply as mask to coordinates and spatula results.
     
@@ -329,6 +348,7 @@ def crop_and_mask_results(image_data, crop_percent):
         image_data (ImageData): ImageData object containing yolo_rect, coordinates, and spatula_results_smoothed
         crop_percent (float): Percentage to crop from each side horizontally (0.0 to 0.5)
                              e.g., 0.1 crops 10% from left and 10% from right (20% total)
+        offset (int): Horizontal offset in pixels. Positive values shift right, negative values shift left (default: 0)
     
     Returns:
         ImageData: Updated ImageData object with cropped_coords and spatula_results_smoothed_cropped
@@ -352,10 +372,13 @@ def crop_and_mask_results(image_data, crop_percent):
     # Calculate crop amount (pixels to remove from each side)
     crop_pixels = int(width * crop_percent)
     
-    # Create cropped rectangle coordinates
-    cropped_x_start = x + crop_pixels
-    cropped_x_end = x + width - crop_pixels
-    cropped_y_start = y
+    # Calculate vertical crop from top (20% of height)
+    vertical_crop_pixels = int(height * 0.25)
+    
+    # Create cropped rectangle coordinates with offset
+    cropped_x_start = x + crop_pixels + offset
+    cropped_x_end = x + width - crop_pixels + offset
+    cropped_y_start = y + vertical_crop_pixels  # Crop 20% from top
     cropped_y_end = y + height
     
     # Create mask for coordinates
@@ -391,8 +414,18 @@ def crop_and_mask_results(image_data, crop_percent):
         image_data.spatula_results_smoothed[cropped_y_start:cropped_y_end, 
                                            cropped_x_start:cropped_x_end]
     
+    # Draw red rectangle showing the crop mask boundaries
+    
+    cv2.rectangle(image_data.spatula_results_smoothed_cropped, 
+                  (cropped_x_start, cropped_y_start), 
+                  (cropped_x_end, cropped_y_end), 
+                  (0, 0, 255),  # Red color in BGR format
+                  thickness=2)
+    
+    # Store cropped rectangle coordinates
+    image_data.cropped_rect = (cropped_x_start, cropped_y_start, cropped_x_end - cropped_x_start, cropped_y_end - cropped_y_start)
+    
     return image_data
-
 
 def process_single_image(image_data):
     """Process a single image through the entire pipeline."""
@@ -413,8 +446,10 @@ def process_single_image(image_data):
     image_data = extract_3d_coordinates(image_data)
     
     # Crop the results by x% on each side horizontally
-    crop_percent = 0
-    image_data = crop_and_mask_results(image_data, crop_percent)
+    crop_percent = 0.3
+    image_data = crop_and_mask_results(image_data, crop_percent, offset=-10)
+    # Find crystal midpoints using K-means clustering
+    image_data = spatula_grouping.find_crystal_midpoints(image_data)
     '''
     cv2.imshow('spatula_results_smoothed', image_data.spatula_results_smoothed)
     cv2.imshow('contoured_image', image_data.contoured_image)
@@ -424,7 +459,7 @@ def process_single_image(image_data):
     cv2.destroyAllWindows()
     '''
     # Save coordinates to CSV (now using cropped coordinates)
-    save_coordinates_to_csv(image_data)
+    #save_coordinates_to_csv(image_data)
 
     
     

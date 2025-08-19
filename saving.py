@@ -145,11 +145,20 @@ def save_simplified_results(image_data, results_path='results'):
     color_white = (255, 255, 255)
     thickness = max(1, int(w / 400))
     text_y = max(30, int(h / 20))
-    
+
+    # Draw rectangle around detected crystals
+    if image_data.cropped_rect:
+        cropped_x_start, cropped_y_start, width, height = image_data.cropped_rect
+        cv2.rectangle(image_data.color_image, 
+                      (cropped_x_start, cropped_y_start), 
+                      (cropped_x_start + width, cropped_y_start + height), 
+                      (0, 0, 255),  # Red color in BGR format
+                      thickness=2)
+
     # Create labeled copies
     images_to_label = [
         (image_data.color_image.copy(), 'Original Image'),
-        (image_data.spatula_results_smoothed_cropped.copy(), 'Detected Crystals')
+        (image_data.final_midpoints_image.copy(), 'Detected Crystals')
     ]
     
     labeled_images = []
@@ -159,6 +168,14 @@ def save_simplified_results(image_data, results_path='results'):
     
     # Combine images side by side (1x2 grid)
     combined_image = np.hstack(labeled_images)
+    
+    # Add percentage coverage text to bottom right
+    if hasattr(image_data, 'percentage_coverage') and image_data.percentage_coverage is not None:
+        coverage_text = f"Coverage: {image_data.percentage_coverage:.1f}%"
+        text_size = cv2.getTextSize(coverage_text, font, font_scale, thickness)[0]
+        text_x = combined_image.shape[1] - text_size[0] - 10
+        text_y_bottom = combined_image.shape[0] - 10
+        cv2.putText(combined_image, coverage_text, (text_x, text_y_bottom), font, font_scale, color_white, thickness)
     
     # Save combined image
     base_name = os.path.splitext(image_data.image_name)[0]
