@@ -4,7 +4,7 @@ import glob
 import argparse
 from pathlib import Path
 
-def create_video_from_images(input_folder='results', output_path='results_video.mp4', fps=2.0, pattern='*_results.jpg'):
+def create_video_from_images(input_folder='video_results2', output_path='results_video.mp4', fps=5.0, pattern='*.jpg'):
     """
     Create a video from a series of images
     

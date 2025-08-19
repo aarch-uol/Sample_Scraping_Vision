@@ -176,7 +176,15 @@ def save_simplified_results(image_data, results_path='results'):
         text_x = combined_image.shape[1] - text_size[0] - 10
         text_y_bottom = combined_image.shape[0] - 10
         cv2.putText(combined_image, coverage_text, (text_x, text_y_bottom), font, font_scale, color_white, thickness)
-    
+
+    # Add percentage coverage of each midpoint (top right)
+    if hasattr(image_data, 'final_midpoints') and image_data.final_midpoints is not None:
+        for i, (x, y, count) in enumerate(image_data.final_midpoints):
+            coverage_text = f"Midpoint {i+1}: {count:.1f}%"
+            text_size = cv2.getTextSize(coverage_text, font, font_scale, thickness)[0]
+            text_x = combined_image.shape[1] - text_size[0] - 10
+            text_y_top = text_y + i * (text_size[1] + 10)
+            cv2.putText(combined_image, coverage_text, (text_x, text_y_top), font, font_scale, color_white, thickness)
     # Save combined image
     base_name = os.path.splitext(image_data.image_name)[0]
     output_path = os.path.join(results_path, f"{base_name}_simplified.jpg")

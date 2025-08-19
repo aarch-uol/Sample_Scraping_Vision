@@ -154,7 +154,6 @@ def find_crystal_midpoints(image_data):
     x, y, width, height = image_data.cropped_rect
     image_area = width * height
     
-    white_pixel_density = num_white_pixels / image_area
     image_data.percentage_coverage = (num_white_pixels / (width * height)) * 100  # Percentage coverage
     
     # Estimate k based on density and typical crystal sizes
@@ -183,28 +182,42 @@ def find_crystal_midpoints(image_data):
             centroid_y = np.mean(white_pixels[:, 1])
             cluster_centers = np.array([[centroid_x, centroid_y]])
     
-    # Step 4: Store midpoints as x,y coordinates
-    image_data.final_midpoints = cluster_centers.astype(int)
     
     # Step 5: Create final_midpoints_image and plot red dots
     image_data.final_midpoints_image = image_data.spatula_results_smoothed_cropped.copy()
-    
+
+    #Find out how many pixels correspond to each midpoint
+    midpoint_pixel_counts = np.zeros(len(cluster_centers), dtype=int)
+    #loop through each pixel in the white mask
+    for y, x in zip(white_coords[0], white_coords[1]):
+        # Calculate distances to each midpoint
+        distances = np.linalg.norm(cluster_centers - np.array([x, y]), axis=1)
+        closest_midpoint = np.argmin(distances)
+        midpoint_pixel_counts[closest_midpoint] += 1
+
+    # work out the midpoint_pixel_counts as a percentage of total area given by the cropped rectangle
+    total_area = image_data.cropped_rect[2] * image_data.cropped_rect[3]  # width * height
+    midpoint_pixel_counts = (midpoint_pixel_counts / total_area) * 100  # Convert to percentage
+
+    # Store midpoints and their pixel counts as tuples
+    image_data.final_midpoints = [(int(center[0]), int(center[1]), count) for center, count in zip(cluster_centers, midpoint_pixel_counts)]
+
     # Ensure image is in color format for drawing red dots
     if len(image_data.final_midpoints_image.shape) == 2:
         # Convert grayscale to color
         image_data.final_midpoints_image = cv2.cvtColor(image_data.final_midpoints_image, cv2.COLOR_GRAY2BGR)
-    
+    index = 0
     # Draw red dots at each midpoint
-    for midpoint in image_data.final_midpoints:
+    for midpoint in cluster_centers:
         x, y = int(midpoint[0]), int(midpoint[1])
-        
+        index += 1
         # Ensure coordinates are within image bounds
         if 0 <= x < image_data.final_midpoints_image.shape[1] and 0 <= y < image_data.final_midpoints_image.shape[0]:
             # Draw red filled circle (BGR format: red is (0, 0, 255))
             cv2.circle(image_data.final_midpoints_image, (x, y), radius=5, color=(0, 0, 255), thickness=-1)
+            # Put the index number at the center of the circle
+            cv2.putText(image_data.final_midpoints_image, str(index), (x - 5, y + 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
             
-            # Optional: Draw a small white border around the red dot for better visibility
-            cv2.circle(image_data.final_midpoints_image, (x, y), radius=6, color=(255, 255, 255), thickness=1)
 
     #print the midpoints, and the percentage coverage
     print(f"Percentage coverage of detected crystals: {image_data.percentage_coverage:.2f}%")
@@ -216,3 +229,5 @@ def find_crystal_midpoints(image_data):
     cv2.waitKey(500)  # Update display
     
     return image_data
+
+
